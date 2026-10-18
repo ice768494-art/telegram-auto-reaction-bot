@@ -226,15 +226,19 @@ async def start(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     user = update.effective_user
+
+    if user is None:
+        return
+
     joined = await check_force_sub(user.id, context)
 
-if not joined:
-    await update.effective_message.reply_text(
-        "🎀 Welcome!\n\n"
-        "Please join our updates channel to use this bot. ❤️",
-        reply_markup=force_sub_menu(),
-    )
-    return
+    if not joined:
+        await update.effective_message.reply_text(
+            "🎀 Welcome!\n\n"
+            "Please join our updates channel to use this bot. ❤️",
+            reply_markup=force_sub_menu(),
+        )
+        return
 
     mention = (
         f'<a href="tg://user?id={user.id}">'
@@ -255,6 +259,13 @@ if not joined:
         "𝗍𝗈 𝖾𝗑𝗉𝗅𝗈𝗋𝖾 𝗆𝗈𝗋𝖾."
     )
 
+    await context.bot.send_photo(
+        chat_id=update.effective_chat.id,
+        photo=START_IMAGE,
+        caption=welcome_text,
+        parse_mode="HTML",
+        reply_markup=menu(),
+    )
     await context.bot.send_photo(
         chat_id=update.effective_chat.id,
         photo=START_IMAGE,
