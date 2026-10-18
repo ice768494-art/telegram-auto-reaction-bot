@@ -2,9 +2,9 @@ import os
 import random
 import logging
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from telegram import ReactionTypeEmoji, Update
+from telegram import Update, ReactionTypeEmoji
 from telegram.ext import (
     Application,
     ContextTypes,
@@ -12,159 +12,123 @@ from telegram.ext import (
     filters,
 )
 
-# ---------- CONFIGURATION ----------
+# ========== CONFIGURATION ==========
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
+
+EMOJI_LIST = [
+    emoji.strip()
+    for emoji in os.environ.get(
+        "EMOJI_LIST",
+        "❤️,🔥,🥰,😎,👏,🎉,🤩"
+    ).split(",")
+    if emoji.strip()
+]
+
 PORT = int(os.environ.get("PORT", "10000"))
 
-EMOJIS = ["❤️", "🔥", "🥰", "😎", "👏", "🎉", "🤩"]
-
 logging.basicConfig(
-    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
 )
 
-# ---------- HEALTH CHECK SERVER ----------
+logger = logging.getLogger(__name__)
+
+
+# ========== RENDER HEALTH SERVER ==========
 
 class HealthHandler(BaseHTTPRequestHandler):
+
     def do_GET(self):
         if self.path in ("/", "/health"):
             self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
             self.end_headers()
             self.wfile.write(b"Auto Reaction Bot is running!")
         else:
             self.send_response(404)
             self.end_headers()
-            self.wfile.write(b"Not Found")
 
     def log_message(self, format, *args):
         pass
 
 
-def start_web_server():
+def start_health_server():
     server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
-    logging.info("Health server listening on port %s", PORT)
+    logger.info("Health server started on port %s", PORT)
     server.serve_forever()
 
 
-# ---------- AUTO REACTION ----------
+# ========== AUTO REACTION ==========
 
-async def auto_react(
+async def react_to_channel_post(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-    message = update.channel_post
+    post = update.channel_post
 
-    if message is None:
+    if post is None:
         return
 
-    async def auto_react(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    message = update.channel_post
-
-    if message is None:
+    if not EMOJI_LIST:
+        logger.error("EMOJI_LIST is empty")
         return
 
-    emoji = random.choice(EMOJIS)
+    selected_emoji = random.choice(EMOJI_LIST)
 
     try:
         await context.bot.set_message_reaction(
-            chat_id=message.chat_id,
-            message_id=message.message_id,
+            chat_id=post.chat_id,
+            message_id=post.message_id,
             reaction=[
-                ReactionTypeEmoji(emoji=emoji)
+                ReactionTypeEmoji(emoji=selected_emoji)
             ],
-            is_big=False,
         )
 
-        logging.info(
-            "Reaction added to post %s: %s",
-            message.message_id,
-            emoji,
+        logger.info(
+            "Reacted with %s to channel post %s",
+            selected_emoji,
+            post.message_id,
         )
 
     except Exception:
-        logging.exception(
-            "Could not react to post %s",
-            message.message_id,
-        )
-    message = update.channel_post
-
-    if message is None:
-        return
-
-    selected = random.sample(EMOJIS, 1)
-
-    try:
-        await context.bot.set_message_reaction(
-            chat_id=message.chat_id,
-            message_id=message.message_id,
-            reaction=[
-                ReactionTypeEmoji(emoji=emoji)
-                for emoji in selected
-            ],
-            is_big=False,
-        )
-
-        logging.info(
-            "Reaction added to post %s: %s",
-            message.message_id,
-            selected,
-        )
-
-    except Exception:
-        logging.exception(
-            "Could not react to post %s",
-            message.message_id,
-        )
-
-    try:
-        await context.bot.set_message_reaction(
-            chat_id=message.chat_id,
-            message_id=message.message_id,
-            reaction=[
-                ReactionTypeEmoji(emoji=emoji)
-                for emoji in selected
-            ],
-            is_big=False,
-        )
-
-        logging.info(
-            "Reactions set on post %s: %s",
-            message.message_id,
-            selected,
-        )
-
-    except Exception:
-        logging.exception(
-            "Could not react to post %s",
-            message.message_id,
+        logger.exception(
+            "Could not react to channel post %s",
+            post.message_id,
         )
 
 
-# ---------- START BOT ----------
+# ========== MAIN ==========
 
 def main():
+    if not BOT_TOKEN:
+        raise RuntimeError(
+            "BOT_TOKEN is missing. Add it in Render Environment Variables."
+        )
+
     threading.Thread(
-        target=start_web_server,
+        target=start_health_server,
         daemon=True,
     ).start()
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .build()
+    )
 
-    app.add_handler(
+    application.add_handler(
         MessageHandler(
             filters.UpdateType.CHANNEL_POST,
-            auto_react,
+            react_to_channel_post,
         )
     )
 
-    logging.info("Auto Reaction Bot starting")
+    logger.info("Auto Reaction Bot is starting...")
 
-    app.run_polling(
+    application.run_polling(
         allowed_updates=["channel_post"],
+        drop_pending_updates=False,
     )
 
 
