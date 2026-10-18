@@ -203,8 +203,19 @@ async def start(
         "• <b>𝗣𝗿𝗶𝘃𝗮𝘁𝗲 𝗖𝗵𝗮𝘁:</b> "
         "𝖨 𝖼𝖺𝗇 𝗋𝖾𝖺𝖼𝗍 𝗍𝗈 𝗒𝗈𝗎𝗋 𝗆𝖾𝗌𝗌𝖺𝗀𝖾𝗌.\n"
         "• <b>𝗚𝗿𝗼𝘂𝗽𝘀 & 𝗖𝗵𝗮𝗻𝗻𝗲𝗹𝘀:</b> "
-        "𝖠𝖽𝖽 𝗆𝖾 𝗍𝗈 
+        "𝖠𝖽𝖽 𝗆𝖾 𝗍𝗈 𝗀𝗋𝗈𝗎𝗉𝗌 𝗈𝗋 𝖼𝗁𝖺𝗇𝗇𝖾𝗅𝗌 "
+        "𝗍𝗈 𝖾𝗇𝖺𝖻𝗅𝖾 𝗋𝖾𝖺𝖼𝗍𝗂𝗈𝗇𝗌.\n\n"
+        "😶‍🌫️ 𝖴𝗌𝖾 𝗍𝗁𝖾 𝖻𝗎𝗍𝗍𝗈𝗇𝗌 𝖻𝖾𝗅𝗈𝗐 "
+        "𝗍𝗈 𝖾𝗑𝗉𝗅𝗈𝗋𝖾 𝗆𝗈𝗋𝖾."
+    )
 
+    await context.bot.send_photo(
+        chat_id=update.effective_chat.id,
+        photo=START_IMAGE,
+        caption=welcome_text,
+        parse_mode="HTML",
+        reply_markup=menu(),
+    )
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(
         "📚 COMMANDS\n\n"
