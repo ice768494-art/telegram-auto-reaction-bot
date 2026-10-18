@@ -24,21 +24,29 @@ from telegram.ext import (
     filters,
 )
 
-# =============== CONFIGURATION ===============
+# ============== CONFIGURATION ==============
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 MONGO_URI = os.getenv("MONGO_URI", "").strip()
 PORT = int(os.getenv("PORT", "10000"))
 
-FORCE_SUB_CHANNEL = "@CodeRips"
-FORCE_SUB_URL = "https://t.me/CodeRips"
+FORCE_SUB_CHANNEL = os.getenv(
+    "FORCE_SUB_CHANNEL", "@CodeRips"
+).strip()
 
-START_IMAGE = "https://i.ibb.co/8gjQJFv4/da6bee925908.jpg"
+FORCE_SUB_URL = os.getenv(
+    "FORCE_SUB_URL", "https://t.me/CodeRips"
+).strip()
+
+START_IMAGE = os.getenv(
+    "START_IMAGE",
+    "https://i.ibb.co/8gjQJFv4/da6bee925908.jpg",
+).strip()
 
 ADMIN_IDS = {
-    int(x.strip())
-    for x in os.getenv("ADMIN_IDS", "").split(",")
-    if x.strip().isdigit()
+    int(item.strip())
+    for item in os.getenv("ADMIN_IDS", "").split(",")
+    if item.strip().isdigit()
 }
 
 DEFAULT_EMOJIS = ["❤️", "🔥", "🥰", "😎", "👏", "🎉", "🤩"]
@@ -47,15 +55,19 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
+
 logger = logging.getLogger(__name__)
 
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN is missing in Render Environment Variables.")
+    raise RuntimeError("BOT_TOKEN is missing in Render variables.")
 
 if not MONGO_URI:
-    raise RuntimeError("MONGO_URI is missing in Render Environment Variables.")
+    raise RuntimeError("MONGO_URI is missing in Render variables.")
 
-# =============== DATABASE ===============
+if not FORCE_SUB_CHANNEL or not FORCE_SUB_URL:
+    raise RuntimeError("Force Subscribe variables cannot be empty.")
+
+# ============== MONGODB ==============
 
 mongo_client = MongoClient(
     MONGO_URI,
@@ -105,10 +117,10 @@ def change_settings(values):
     )
 
 
-def increment_stat(key, value=1):
+def increment_stat(key, amount=1):
     stats_db.update_one(
         {"_id": "global"},
-        {"$inc": {key: value}},
+        {"$inc": {key: amount}},
         upsert=True,
     )
 
@@ -117,14 +129,14 @@ def get_stats():
     return stats_db.find_one({"_id": "global"}) or {}
 
 
-# =============== ADMIN CHECK ===============
+# ============== ADMIN CHECK ==============
 
-def is_admin(update: Update):
+def is_admin(update):
     user = update.effective_user
     return user is not None and user.id in ADMIN_IDS
 
 
-async def admin_required(update: Update):
+async def admin_required(update):
     if is_admin(update):
         return True
 
@@ -132,15 +144,16 @@ async def admin_required(update: Update):
 
     if message:
         await message.reply_text(
-            "⛔ This command is available to bot administrators only."
+            "⛔ This command is for bot administrators only."
         )
 
     return False
 
 
-# =============== RENDER HEALTH SERVER ===============
+# ============== RENDER HEALTH SERVER ==============
 
 class HealthHandler(BaseHTTPRequestHandler):
+
     def do_GET(self):
         if self.path in ("/", "/health"):
             self.send_response(200)
@@ -161,16 +174,18 @@ def start_health_server():
             ("0.0.0.0", PORT),
             HealthHandler,
         )
+
         logger.info("Health server running on port %s", PORT)
         server.serve_forever()
+
     except Exception:
-        logger.exception("Health server failed to start")
+        logger.exception("Health server failed")
 
 
-# =============== MAIN MENU ===============
+# ============== KEYBOARDS ==============
 
 def menu():
-    keyboard = [
+    return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
                 "📢 Updates",
@@ -182,38 +197,46 @@ def menu():
             ),
         ],
         [
-            InlineKeyboardButton("📊 Status", callback_data="status"),
-            InlineKeyboardButton("📈 Statistics", callback_data="stats"),
+            InlineKeyboardButton(
+                "📊 Status",
+                callback_data="status",
+            ),
+            InlineKeyboardButton(
+                "📈 Statistics",
+                callback_data="stats",
+            ),
         ],
         [
-            InlineKeyboardButton("🎭 Emojis", callback_data="emojis"),
-            InlineKeyboardButton("📚 Help", callback_data="help"),
+            InlineKeyboardButton(
+                "🎭 Emojis",
+                callback_data="emojis",
+            ),
+            InlineKeyboardButton(
+                "📚 Help",
+                callback_data="help",
+            ),
         ],
-    ]
+    ])
 
-    return InlineKeyboardMarkup(keyboard)
-
-
-# =============== FORCE SUBSCRIBE ===============
 
 def force_sub_menu():
-    keyboard = [
+    return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
                 "📢 Join Updates",
                 url=FORCE_SUB_URL,
-            )
+            ),
         ],
         [
             InlineKeyboardButton(
                 "✅ I've Joined",
                 callback_data="check_subscription",
-            )
+            ),
         ],
-    ]
+    ])
 
-    return InlineKeyboardMarkup(keyboard)
 
+# ============== FORCE SUBSCRIBE ==============
 
 async def check_force_sub(user_id, context):
     try:
@@ -230,7 +253,7 @@ async def check_force_sub(user_id, context):
 
     except TelegramError:
         logger.exception(
-            "Cannot verify membership in %s",
+            "Membership check failed for %s",
             FORCE_SUB_CHANNEL,
         )
         return False
@@ -240,19 +263,18 @@ async def send_force_sub(chat_id, context):
     await context.bot.send_message(
         chat_id=chat_id,
         text=(
-            "🎀 <b>One Small Step!</b>\n\n"
-            "❤️ Please join our updates channel to use "
-            "the Reaction Bot.\n\n"
-            "1️⃣ Tap <b>Join Updates</b> below.\n"
+            "🎀 <b>Welcome to Reaction Bot!</b>\n\n"
+            "❤️ Please join our updates channel before using the bot.\n\n"
+            "1️⃣ Press 📢 Join Updates.\n"
             "2️⃣ Join the channel.\n"
-            "3️⃣ Come back and tap <b>I've Joined</b>."
+            "3️⃣ Return and press ✅ I've Joined."
         ),
         parse_mode="HTML",
         reply_markup=force_sub_menu(),
     )
 
 
-# =============== WELCOME MESSAGE ===============
+# ============== WELCOME MESSAGE ==============
 
 async def send_welcome(chat_id, user, context):
     mention = (
@@ -282,8 +304,9 @@ async def send_welcome(chat_id, user, context):
             parse_mode="HTML",
             reply_markup=menu(),
         )
+
     except TelegramError:
-        logger.exception("Welcome photo failed; sending text instead")
+        logger.exception("Could not send welcome photo")
 
         await context.bot.send_message(
             chat_id=chat_id,
@@ -293,34 +316,32 @@ async def send_welcome(chat_id, user, context):
         )
 
 
-async def start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
 
     if user is None or chat is None:
         return
 
-    joined = await check_force_sub(user.id, context)
-
-    if not joined:
+    if not await check_force_sub(user.id, context):
         await send_force_sub(chat.id, context)
         return
 
     await send_welcome(chat.id, user, context)
 
 
-# =============== SUBSCRIPTION BUTTON ===============
+# ============== I'VE JOINED BUTTON ==============
 
 async def check_subscription_button(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
-    await query.answer()
 
+    if query is None:
+        return
+
+    # Answer the callback only once.
     joined = await check_force_sub(
         query.from_user.id,
         context,
@@ -328,77 +349,72 @@ async def check_subscription_button(
 
     if not joined:
         await query.answer(
-            "❌ Join @CodeRips first, then try again.",
+            "❌ Join the channel first, then try again.",
             show_alert=True,
         )
         return
 
-    # Remove the Force Subscribe message.
+    await query.answer("✅ Membership verified!")
+
+    chat_id = query.message.chat_id
+    user = query.from_user
+
     try:
         await query.message.delete()
     except TelegramError:
-        logger.warning("Could not delete the subscription message")
+        logger.warning("Could not delete Force Subscribe message")
 
-    # Display the welcome screen directly.
-    await send_welcome(
-        chat_id=query.message.chat_id,
-        user=query.from_user,
-        context=context,
-    )
+    await send_welcome(chat_id, user, context)
 
 
-# =============== HELP ===============
+# ============== HELP ==============
 
-async def help_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def help_command(update, context):
     await update.effective_message.reply_text(
         "📚 COMMANDS\n\n"
         "/start - Open the welcome menu\n"
         "/help - Show commands\n"
-        "/status - Check bot status\n"
-        "/ping - Check response time\n"
-        "/react - Enable automatic reactions (admin)\n"
-        "/stop - Disable automatic reactions (admin)\n"
-        "/emojis - View reaction emojis\n"
+        "/status - Bot status\n"
+        "/ping - Response time\n"
+        "/react - Enable reactions (admin)\n"
+        "/stop - Disable reactions (admin)\n"
+        "/emojis - Show emojis\n"
         "/setemoji ❤️ 🔥 🥰 - Change emojis (admin)\n"
         "/stats - Show statistics\n"
-        "/test - Test a reaction on a replied-to message\n\n"
-        "The bot reacts to new posts in channels where it "
-        "has the necessary administrator permissions."
+        "/test - Test a reaction on a replied-to message"
     )
 
 
-# =============== STATUS ===============
+# ============== STATUS ==============
 
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def status(update, context):
     settings = get_settings()
 
     await update.effective_message.reply_text(
         "📊 BOT STATUS\n\n"
-        f"Reactions: {'🟢 Enabled' if settings.get('enabled', True) else '🔴 Disabled'}\n"
-        f"Emojis configured: {len(settings.get('emojis', DEFAULT_EMOJIS))}\n"
-        "Database: Connected"
+        f"Reactions: "
+        f"{'🟢 Enabled' if settings.get('enabled', True) else '🔴 Disabled'}\n"
+        f"Configured emojis: "
+        f"{len(settings.get('emojis', DEFAULT_EMOJIS))}"
     )
 
 
-# =============== STATISTICS ===============
+# ============== STATISTICS ==============
 
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def stats(update, context):
     data = get_stats()
 
     await update.effective_message.reply_text(
-        "📈 REACTION STATISTICS\n\n"
+        "📈 STATISTICS\n\n"
         f"Posts received: {data.get('posts_seen', 0)}\n"
         f"Successful reactions: {data.get('reactions_success', 0)}\n"
         f"Failed reactions: {data.get('reactions_failed', 0)}"
     )
 
 
-# =============== PING ===============
+# ============== PING ==============
 
-async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def ping(update, context):
     started = time.monotonic()
 
     message = await update.effective_message.reply_text("🏓 Pong!")
@@ -410,12 +426,9 @@ async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# =============== ADMIN COMMANDS ===============
+# ============== ADMIN COMMANDS ==============
 
-async def react_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def react_command(update, context):
     if not await admin_required(update):
         return
 
@@ -426,10 +439,7 @@ async def react_command(
     )
 
 
-async def stop_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def stop_command(update, context):
     if not await admin_required(update):
         return
 
@@ -440,7 +450,7 @@ async def stop_command(
     )
 
 
-async def emojis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def emojis(update, context):
     settings = get_settings()
 
     await update.effective_message.reply_text(
@@ -449,10 +459,7 @@ async def emojis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def setemoji(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def setemoji(update, context):
     if not await admin_required(update):
         return
 
@@ -477,12 +484,9 @@ async def setemoji(
     )
 
 
-# =============== TEST REACTION ===============
+# ============== TEST REACTION ==============
 
-async def test_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def test_command(update, context):
     if not await admin_required(update):
         return
 
@@ -496,13 +500,13 @@ async def test_command(
         return
 
     settings = get_settings()
-    emojis_list = settings.get("emojis", DEFAULT_EMOJIS)
+    emoji_list = settings.get("emojis", DEFAULT_EMOJIS)
 
-    if not emojis_list:
-        await message.reply_text("❌ No emojis are configured.")
+    if not emoji_list:
+        await message.reply_text("❌ No emojis configured.")
         return
 
-    emoji = random.choice(emojis_list)
+    emoji = random.choice(emoji_list)
 
     try:
         await context.bot.set_message_reaction(
@@ -519,17 +523,14 @@ async def test_command(
         logger.exception("Test reaction failed")
 
         await message.reply_text(
-            "❌ Test failed. Check the bot's permissions and "
-            "whether Telegram supports reactions for that message."
+            "❌ Test failed. Check the bot's permissions "
+            "and the message type."
         )
 
 
-# =============== AUTOMATIC CHANNEL REACTIONS ===============
+# ============== AUTOMATIC REACTIONS ==============
 
-async def react_to_channel_post(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def react_to_channel_post(update, context):
     post = update.channel_post
 
     if post is None:
@@ -542,15 +543,14 @@ async def react_to_channel_post(
     if not settings.get("enabled", True):
         return
 
-    emojis_list = settings.get("emojis", DEFAULT_EMOJIS)
+    emoji_list = settings.get("emojis", DEFAULT_EMOJIS)
 
-    if not emojis_list:
-        logger.warning("No reaction emojis configured")
+    if not emoji_list:
         increment_stat("reactions_failed")
+        logger.warning("No reaction emojis configured")
         return
 
-    # The bot applies one reaction to each new channel post.
-    emoji = random.choice(emojis_list)
+    emoji = random.choice(emoji_list)
 
     try:
         await context.bot.set_message_reaction(
@@ -562,7 +562,7 @@ async def react_to_channel_post(
         increment_stat("reactions_success")
 
         logger.info(
-            "Applied reaction %s to chat %s message %s",
+            "Applied %s to channel %s post %s",
             emoji,
             post.chat_id,
             post.message_id,
@@ -570,16 +570,17 @@ async def react_to_channel_post(
 
     except TelegramError:
         increment_stat("reactions_failed")
-        logger.exception("Failed to react to channel post")
+        logger.exception("Automatic reaction failed")
 
 
-# =============== INLINE MENU BUTTONS ===============
+# ============== MENU BUTTONS ==============
 
-async def button_handler(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def button_handler(update, context):
     query = update.callback_query
+
+    if query is None:
+        return
+
     await query.answer()
 
     if query.data == "status":
@@ -587,8 +588,10 @@ async def button_handler(
 
         text = (
             "📊 BOT STATUS\n\n"
-            f"Reactions: {'🟢 Enabled' if settings.get('enabled', True) else '🔴 Disabled'}\n"
-            f"Configured emojis: {len(settings.get('emojis', DEFAULT_EMOJIS))}"
+            f"Reactions: "
+            f"{'🟢 Enabled' if settings.get('enabled', True) else '🔴 Disabled'}\n"
+            f"Configured emojis: "
+            f"{len(settings.get('emojis', DEFAULT_EMOJIS))}"
         )
 
     elif query.data == "stats":
@@ -613,13 +616,13 @@ async def button_handler(
         text = (
             "📚 COMMANDS\n\n"
             "/start - Open menu\n"
-            "/help - Show help\n"
-            "/status - Bot status\n"
-            "/ping - Response time\n"
+            "/help - Help\n"
+            "/status - Status\n"
+            "/ping - Ping\n"
             "/react - Enable reactions (admin)\n"
             "/stop - Disable reactions (admin)\n"
             "/emojis - Show emojis\n"
-            "/setemoji ❤️ 🔥 🥰 - Change emojis (admin)\n"
+            "/setemoji ❤️ 🔥 🥰 - Set emojis (admin)\n"
             "/stats - Statistics\n"
             "/test - Test reaction"
         )
@@ -630,10 +633,9 @@ async def button_handler(
     await query.message.reply_text(text)
 
 
-# =============== MAIN ===============
+# ============== MAIN ==============
 
 def main():
-    # Check MongoDB before starting.
     mongo_client.admin.command("ping")
     logger.info("MongoDB connection successful")
 
@@ -644,7 +646,6 @@ def main():
 
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # Commands
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("status", status))
@@ -656,7 +657,7 @@ def main():
     application.add_handler(CommandHandler("setemoji", setemoji))
     application.add_handler(CommandHandler("test", test_command))
 
-    # Register Force Subscribe callback BEFORE general callbacks.
+    # Register Force Subscribe before general button handling.
     application.add_handler(
         CallbackQueryHandler(
             check_subscription_button,
@@ -668,7 +669,6 @@ def main():
         CallbackQueryHandler(button_handler)
     )
 
-    # Automatically react to new channel posts.
     application.add_handler(
         MessageHandler(
             filters.UpdateType.CHANNEL_POST,
