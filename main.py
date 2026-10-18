@@ -25,6 +25,8 @@ from telegram.ext import (
 # =============== CONFIGURATION ===============
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+FORCE_SUB_CHANNEL = "@CodeRips"
+FORCE_SUB_URL = "https://t.me/CodeRips"
 MONGO_URI = os.getenv("MONGO_URI", "").strip()
 PORT = int(os.getenv("PORT", "10000"))
 
@@ -46,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is missing.")
+    
 
 if not MONGO_URI:
     raise RuntimeError("MONGO_URI is missing.")
@@ -183,12 +186,55 @@ def menu():
 
     return InlineKeyboardMarkup(keyboard)
 
+async def check_force_sub(user_id, context):
+    try:
+        member = await context.bot.get_chat_member(
+            chat_id=FORCE_SUB_CHANNEL,
+            user_id=user_id,
+        )
+
+        return member.status in (
+            "member",
+            "administrator",
+            "creator",
+        )
+
+    except Exception:
+        logger.exception("Force-subscription check failed")
+        return False
+
+def force_sub_menu():
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "📢 Join Updates",
+                url=FORCE_SUB_URL,
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "✅ I've Joined",
+                callback_data="check_subscription",
+            )
+        ],
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
 
 async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
     user = update.effective_user
+    joined = await check_force_sub(user.id, context)
+
+if not joined:
+    await update.effective_message.reply_text(
+        "🎀 Welcome!\n\n"
+        "Please join our updates channel to use this bot. ❤️",
+        reply_markup=force_sub_menu(),
+    )
+    return
 
     mention = (
         f'<a href="tg://user?id={user.id}">'
@@ -397,6 +443,29 @@ async def react_to_channel_post(
 
 
 # =============== INLINE BUTTONS ===============
+async def check_subscription_button(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    joined = await check_force_sub(
+        query.from_user.id,
+        context,
+    )
+
+    if joined:
+        await query.message.delete()
+
+        await query.message.chat.send_message(
+            "✅ Subscription verified! Now send /start."
+        )
+    else:
+        await query.answer(
+            "❌ Please join @CodeRips first!",
+            show_alert=True,
+        )
 
 async def button_handler(
     update: Update,
