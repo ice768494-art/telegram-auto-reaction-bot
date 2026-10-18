@@ -58,7 +58,39 @@ async def auto_react(
     if message is None:
         return
 
-    selected = random.sample(EMOJIS, 3)
+    async def auto_react(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    message = update.channel_post
+
+    if message is None:
+        return
+
+    selected = random.sample(EMOJIS, 1)
+
+    try:
+        await context.bot.set_message_reaction(
+            chat_id=message.chat_id,
+            message_id=message.message_id,
+            reaction=[
+                ReactionTypeEmoji(emoji=emoji)
+                for emoji in selected
+            ],
+            is_big=False,
+        )
+
+        logging.info(
+            "Reaction added to post %s: %s",
+            message.message_id,
+            selected,
+        )
+
+    except Exception:
+        logging.exception(
+            "Could not react to post %s",
+            message.message_id,
+        )
 
     try:
         await context.bot.set_message_reaction(
