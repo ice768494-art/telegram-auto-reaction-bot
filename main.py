@@ -3,6 +3,7 @@ import time
 import random
 import logging
 import threading
+import html 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from pymongo import MongoClient
@@ -141,30 +142,68 @@ def start_health_server():
 
 # =============== MENU ===============
 
+# =============== CUSTOM START MENU ===============
+
+START_IMAGE = "https://i.ibb.co/8gjQJFv4/da6bee925908.jpg"
+
+
 def menu():
-    return InlineKeyboardMarkup([
+    keyboard = [
         [
-            InlineKeyboardButton("📊 Status", callback_data="status"),
-            InlineKeyboardButton("📈 Stats", callback_data="stats"),
+            InlineKeyboardButton(
+                "📢 Updates",
+                url="https://t.me/CodeRips"
+            ),
+            InlineKeyboardButton(
+                "💬 Support",
+                url="https://t.me/Code_Rips_Support"
+            ),
         ],
         [
-            InlineKeyboardButton("🎭 Emojis", callback_data="emojis"),
-            InlineKeyboardButton("📚 Help", callback_data="help"),
+            InlineKeyboardButton(
+                "📊 Status",
+                callback_data="status"
+            ),
+            InlineKeyboardButton(
+                "📈 Statistics",
+                callback_data="stats"
+            ),
         ],
-    ])
+        [
+            InlineKeyboardButton(
+                "🎭 Emojis",
+                callback_data="emojis"
+            ),
+            InlineKeyboardButton(
+                "📚 Help",
+                callback_data="help"
+            ),
+        ],
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.effective_message.reply_text(
-        "👑 AUTO REACTION BOT ULTIMATE\n\n"
-        "❤️ Automatic channel reactions\n"
-        "📡 Automatic channel detection\n"
-        "💾 MongoDB settings and statistics\n"
-        "🔐 Admin controls\n\n"
-        "Use the buttons below or type /help.",
-        reply_markup=menu(),
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    user = update.effective_user
+
+    mention = (
+        f'<a href="tg://user?id={user.id}">'
+        f'{html.escape(user.first_name)}</a>'
     )
 
+    welcome_text = (
+        f"🎀 <b>𝗪𝗲𝗹𝗰𝗼𝗺𝗲, {mention}</b>\n\n"
+        "𝖳𝗁𝖺𝗇𝗄 𝗒𝗈𝗎 𝖿𝗈𝗋 𝗌𝗍𝖺𝗋𝗍𝗂𝗇𝗀 𝗍𝗁𝖾 𝖻𝗈𝗍 ✨\n\n"
+        "🤖 <b>𝗪𝗲𝗹𝗰𝗼𝗺𝗲 𝗧𝗼 𝗥𝗲𝗮𝗰𝘁𝗶𝗼𝗻 𝗕𝗼𝘁</b>\n\n"
+        "💬 <b>𝗜𝗻𝗳𝗼:</b>\n"
+        "• <b>𝗣𝗿𝗶𝘃𝗮𝘁𝗲 𝗖𝗵𝗮𝘁:</b> "
+        "𝖨 𝖼𝖺𝗇 𝗋𝖾𝖺𝖼𝗍 𝗍𝗈 𝗒𝗈𝗎𝗋 𝗆𝖾𝗌𝗌𝖺𝗀𝖾𝗌.\n"
+        "• <b>𝗚𝗿𝗼𝘂𝗽𝘀 & 𝗖𝗵𝗮𝗻𝗻𝗲𝗹𝘀:</b> "
+        "𝖠𝖽𝖽 𝗆𝖾 𝗍𝗈 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(
