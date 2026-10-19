@@ -84,6 +84,7 @@ settings_db.update_one(
         "$setOnInsert": {
             "enabled": True,
             "emojis": DEFAULT_EMOJIS,
+            "reaction_count": 1,
         }
     },
     upsert=True,
@@ -106,6 +107,7 @@ def get_settings():
     return settings_db.find_one({"_id": "global"}) or {
         "enabled": True,
         "emojis": DEFAULT_EMOJIS,
+        "reaction_count": 1,
     }
 
 
@@ -174,7 +176,6 @@ def start_health_server():
             ("0.0.0.0", PORT),
             HealthHandler,
         )
-
         logger.info("Health server running on port %s", PORT)
         server.serve_forever()
 
@@ -197,24 +198,12 @@ def menu():
             ),
         ],
         [
-            InlineKeyboardButton(
-                "📊 Status",
-                callback_data="status",
-            ),
-            InlineKeyboardButton(
-                "📈 Statistics",
-                callback_data="stats",
-            ),
+            InlineKeyboardButton("📊 Status", callback_data="status"),
+            InlineKeyboardButton("📈 Statistics", callback_data="stats"),
         ],
         [
-            InlineKeyboardButton(
-                "🎭 Emojis",
-                callback_data="emojis",
-            ),
-            InlineKeyboardButton(
-                "📚 Help",
-                callback_data="help",
-            ),
+            InlineKeyboardButton("🎭 Emojis", callback_data="emojis"),
+            InlineKeyboardButton("📚 Help", callback_data="help"),
         ],
     ])
 
@@ -245,17 +234,10 @@ async def check_force_sub(user_id, context):
             user_id=user_id,
         )
 
-        return member.status in (
-            "member",
-            "administrator",
-            "creator",
-        )
+        return member.status in ("member", "administrator", "creator")
 
     except TelegramError:
-        logger.exception(
-            "Membership check failed for %s",
-            FORCE_SUB_CHANNEL,
-        )
+        logger.exception("Membership check failed")
         return False
 
 
@@ -274,7 +256,7 @@ async def send_force_sub(chat_id, context):
     )
 
 
-# ============== WELCOME MESSAGE ==============
+# ============== ORIGINAL WELCOME MESSAGE ==============
 
 async def send_welcome(chat_id, user, context):
     mention = (
@@ -307,7 +289,6 @@ async def send_welcome(chat_id, user, context):
 
     except TelegramError:
         logger.exception("Could not send welcome photo")
-
         await context.bot.send_message(
             chat_id=chat_id,
             text=welcome_text,
@@ -330,22 +311,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_welcome(chat.id, user, context)
 
 
-# ============== I'VE JOINED BUTTON ==============
+# ============== SUBSCRIPTION BUTTON ==============
 
-async def check_subscription_button(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def check_subscription_button(update, context):
     query = update.callback_query
 
     if query is None:
         return
 
-    # Answer the callback only once.
-    joined = await check_force_sub(
-        query.from_user.id,
-        context,
-    )
+    joined = await check_force_sub(query.from_user.id, context)
 
     if not joined:
         await query.answer(
@@ -372,7 +346,7 @@ async def check_subscription_button(
 async def help_command(update, context):
     await update.effective_message.reply_text(
         "📚 COMMANDS\n\n"
-        "/start - Open the welcome menu\n"
+        "/start - Open welcome menu\n"
         "/help - Show commands\n"
         "/status - Bot status\n"
         "/ping - Response time\n"
@@ -380,50 +354,42 @@ async def help_command(update, context):
         "/stop - Disable reactions (admin)\n"
         "/emojis - Show emojis\n"
         "/setemoji ❤️ 🔥 🥰 - Change emojis (admin)\n"
+        "/setcount 1 - Set reaction count (admin)\n"
         "/stats - Show statistics\n"
         "/test - Test a reaction on a replied-to message"
     )
 
 
-# ============== STATUS ==============
+# ============== STATUS & STATISTICS ==============
 
 async def status(update, context):
     settings = get_settings()
 
     await update.effective_message.reply_text(
         "📊 BOT STATUS\n\n"
-        f"Reactions: "
-        f"{'🟢 Enabled' if settings.get('enabled', True) else '🔴 Disabled'}\n"
-        f"Configured emojis: "
-        f"{len(settings.get('emojis', DEFAULT_EMOJIS))}"
+        f"Reactions: {'🟢 Enabled' if settings.get('enabled', True) else '🔴 Disabled'}\n"
+        f"Configured emojis: {len(settings.get('emojis', DEFAULT_EMOJIS))}\n"
+        f"Requested reaction count: {settings.get('reaction_count', 1)}\n"
+        "Note: Telegram may limit reactions to one per message."
     )
 
-
-# ============== STATISTICS ==============
 
 async def stats(update, context):
     data = get_stats()
 
     await update.effective_message.reply_text(
         "📈 STATISTICS\n\n"
-        f"Posts received: {data.get('posts_seen', 0)}\n"
+        f"Messages received: {data.get('posts_seen', 0)}\n"
         f"Successful reactions: {data.get('reactions_success', 0)}\n"
         f"Failed reactions: {data.get('reactions_failed', 0)}"
     )
 
 
-# ============== PING ==============
-
 async def ping(update, context):
     started = time.monotonic()
-
     message = await update.effective_message.reply_text("🏓 Pong!")
-
     elapsed = (time.monotonic() - started) * 1000
-
-    await message.edit_text(
-        f"🏓 Pong!\nResponse time: {elapsed:.0f} ms"
-    )
+    await message.edit_text(f"🏓 Pong!\nResponse time: {elapsed:.0f} ms")
 
 
 # ============== ADMIN COMMANDS ==============
@@ -433,7 +399,6 @@ async def react_command(update, context):
         return
 
     change_settings({"enabled": True})
-
     await update.effective_message.reply_text(
         "✅ Automatic reactions enabled."
     )
@@ -444,7 +409,6 @@ async def stop_command(update, context):
         return
 
     change_settings({"enabled": False})
-
     await update.effective_message.reply_text(
         "⛔ Automatic reactions disabled."
     )
@@ -452,7 +416,6 @@ async def stop_command(update, context):
 
 async def emojis(update, context):
     settings = get_settings()
-
     await update.effective_message.reply_text(
         "🎭 Current emojis:\n"
         + " ".join(settings.get("emojis", DEFAULT_EMOJIS))
@@ -478,9 +441,43 @@ async def setemoji(update, context):
         return
 
     change_settings({"emojis": selected})
-
     await update.effective_message.reply_text(
         "✅ Reaction emojis updated:\n" + " ".join(selected)
+    )
+
+
+async def setcount(update, context):
+    if not await admin_required(update):
+        return
+
+    if len(context.args) != 1:
+        await update.effective_message.reply_text(
+            "Usage: /setcount 1\n"
+            "The standard Telegram Bot API generally permits "
+            "one reaction per message for non-Premium bots."
+        )
+        return
+
+    try:
+        count = int(context.args[0])
+    except ValueError:
+        await update.effective_message.reply_text(
+            "❌ Enter a whole number."
+        )
+        return
+
+    if not 1 <= count <= 10:
+        await update.effective_message.reply_text(
+            "❌ Choose a count from 1 to 10."
+        )
+        return
+
+    change_settings({"reaction_count": count})
+
+    await update.effective_message.reply_text(
+        f"✅ Requested reaction count saved: {count}\n\n"
+        "⚠️ Telegram may prevent applying multiple reactions "
+        "to one message. The setting does not override Telegram limits."
     )
 
 
@@ -514,26 +511,29 @@ async def test_command(update, context):
             message_id=target.message_id,
             reaction=[ReactionTypeEmoji(emoji=emoji)],
         )
-
-        await message.reply_text(
-            f"✅ Test reaction applied: {emoji}"
-        )
+        await message.reply_text(f"✅ Test reaction applied: {emoji}")
 
     except TelegramError:
         logger.exception("Test reaction failed")
-
         await message.reply_text(
-            "❌ Test failed. Check the bot's permissions "
-            "and the message type."
+            "❌ Test failed. Check the bot's permissions, "
+            "the chat's reaction settings, and message type."
         )
 
 
 # ============== AUTOMATIC REACTIONS ==============
 
-async def react_to_channel_post(update, context):
-    post = update.channel_post
+async def apply_automatic_reaction(update, context):
+    message = update.effective_message
 
-    if post is None:
+    if message is None:
+        return
+
+    # Ignore private chats and bot commands.
+    if message.chat.type == "private":
+        return
+
+    if message.text and message.text.startswith("/"):
         return
 
     increment_stat("posts_seen")
@@ -550,27 +550,44 @@ async def react_to_channel_post(update, context):
         logger.warning("No reaction emojis configured")
         return
 
-    emoji = random.choice(emoji_list)
+    requested_count = max(
+        1,
+        min(10, int(settings.get("reaction_count", 1))),
+    )
+
+    # Select distinct emojis, but use one reaction in the standard
+    # Bot API request because multiple reactions may not be supported.
+    selected = random.sample(
+        emoji_list,
+        min(requested_count, len(emoji_list)),
+    )
+
+    emoji = selected[0]
 
     try:
         await context.bot.set_message_reaction(
-            chat_id=post.chat_id,
-            message_id=post.message_id,
+            chat_id=message.chat_id,
+            message_id=message.message_id,
             reaction=[ReactionTypeEmoji(emoji=emoji)],
         )
 
         increment_stat("reactions_success")
 
         logger.info(
-            "Applied %s to channel %s post %s",
+            "Applied %s to chat %s message %s",
             emoji,
-            post.chat_id,
-            post.message_id,
+            message.chat_id,
+            message.message_id,
         )
 
     except TelegramError:
         increment_stat("reactions_failed")
         logger.exception("Automatic reaction failed")
+
+
+async def react_to_channel_post(update, context):
+    # Keep the original channel-post handler behavior.
+    await apply_automatic_reaction(update, context)
 
 
 # ============== MENU BUTTONS ==============
@@ -585,28 +602,24 @@ async def button_handler(update, context):
 
     if query.data == "status":
         settings = get_settings()
-
         text = (
             "📊 BOT STATUS\n\n"
-            f"Reactions: "
-            f"{'🟢 Enabled' if settings.get('enabled', True) else '🔴 Disabled'}\n"
-            f"Configured emojis: "
-            f"{len(settings.get('emojis', DEFAULT_EMOJIS))}"
+            f"Reactions: {'🟢 Enabled' if settings.get('enabled', True) else '🔴 Disabled'}\n"
+            f"Configured emojis: {len(settings.get('emojis', DEFAULT_EMOJIS))}\n"
+            f"Requested count: {settings.get('reaction_count', 1)}"
         )
 
     elif query.data == "stats":
         data = get_stats()
-
         text = (
             "📈 STATISTICS\n\n"
-            f"Posts received: {data.get('posts_seen', 0)}\n"
+            f"Messages received: {data.get('posts_seen', 0)}\n"
             f"Successful reactions: {data.get('reactions_success', 0)}\n"
             f"Failed reactions: {data.get('reactions_failed', 0)}"
         )
 
     elif query.data == "emojis":
         settings = get_settings()
-
         text = (
             "🎭 Configured emojis:\n"
             + " ".join(settings.get("emojis", DEFAULT_EMOJIS))
@@ -623,6 +636,7 @@ async def button_handler(update, context):
             "/stop - Disable reactions (admin)\n"
             "/emojis - Show emojis\n"
             "/setemoji ❤️ 🔥 🥰 - Set emojis (admin)\n"
+            "/setcount 1 - Set requested count (admin)\n"
             "/stats - Statistics\n"
             "/test - Test reaction"
         )
@@ -655,9 +669,9 @@ def main():
     application.add_handler(CommandHandler("stop", stop_command))
     application.add_handler(CommandHandler("emojis", emojis))
     application.add_handler(CommandHandler("setemoji", setemoji))
+    application.add_handler(CommandHandler("setcount", setcount))
     application.add_handler(CommandHandler("test", test_command))
 
-    # Register Force Subscribe before general button handling.
     application.add_handler(
         CallbackQueryHandler(
             check_subscription_button,
@@ -669,6 +683,7 @@ def main():
         CallbackQueryHandler(button_handler)
     )
 
+    # Channel posts.
     application.add_handler(
         MessageHandler(
             filters.UpdateType.CHANNEL_POST,
@@ -676,7 +691,15 @@ def main():
         )
     )
 
-    logger.info("Auto Reaction Bot started")
+    # Group and supergroup messages.
+    application.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS & ~filters.COMMAND,
+            apply_automatic_reaction,
+        )
+    )
+
+    logger.info("Auto Reaction Bot V2 started")
 
     application.run_polling(
         allowed_updates=[
